@@ -1,0 +1,5 @@
+/home/phoenix/repos/git-native-agents/agents/architect
+/home/phoenix/repos/git-native-agents/agents/builder
+/home/phoenix/repos/git-native-agents/agents/analyst
+/home/phoenix/repos/git-native-agents/agents/memory-keeper
+/home/phoenix/repos/git-native-agents/agents/scout
