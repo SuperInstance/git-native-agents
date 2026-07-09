@@ -18,6 +18,36 @@ Git-Native Agents asks: what would a multi-agent system look like if it were bui
 
 The result is a fleet that is auditable by default: every message, every memory, every decision leaves a permanent, signed commit trail.
 
+## Status & capabilities
+
+This repository contains one real, working artifact: `orchestrator.sh`, a ~265-line bash script. Every command below was traced through the source and run end-to-end before this section was written.
+
+- ✅ **`spawn`, `send`, `tick`, `remember`, `recall`, `think`, `decide`, `broadcast`, `fleet`** — all implemented and functional. Each maps to a git operation (commit / branch / tag / merge) and leaves a commit trail.
+- ✅ **Auditable by default** — every message, memory, and decision is a git commit you can inspect with `git log`, `git show`, or `git tag`.
+- ✅ **Offline / local** — no server, broker, or database. Agents are plain directories with embedded git repos.
+- ⚠️ **Running `fleet` on a fresh clone shows nothing** — the shipped `registry/agents.txt` contains absolute paths from another machine (`/home/phoenix/...`), and the committed `agents/*` directories are empty placeholders. To see the system work you must re-spawn agents (see Quick start), which rewrites the registry with paths valid on *your* machine.
+- ⚠️ **Requires `git` on `PATH`** and a writable local filesystem. No other runtime dependency.
+
+### What the "agent computation" actually is
+
+This is the single most important honesty point: **there is no LLM, no model call, and no real reasoning.** A `tick` writes a fixed-format echo to `outbox/`:
+
+```
+result: processed: <the incoming message body> → computed at <unix timestamp>
+```
+
+That string is built literally in `orchestrator.sh` (`tick_agent`). So this repo gives you the *coordination plumbing* — message passing, tagged memory, thought branches, merge-based decisions — but **you must supply the intelligence yourself** by editing the `tick` logic (or calling a model from it). The shipped tick is a placeholder that proves the message round-trips.
+
+## What this explicitly does NOT do yet
+
+- 🔮 **No autonomous agent loop.** Agents never wake themselves. `tick` only runs when *you* invoke it; there is no scheduler, no polling, no sleep/retry loop that drives the fleet.
+- 🔮 **No real reasoning / model integration.** As above, `tick` echoes; it does not think. Wiring in an LLM is left to you.
+- 🔮 **No concurrency control.** No file locking, no atomic queue, no broker around git. Concurrent `send`s to the same agent repo collide on git's `index.lock` and some commits fail. Serial or low-concurrency access only.
+- 🔮 **No networking or distribution.** Everything is local filesystem paths. There is no `push`/`pull` coordination between machines and no remote registry; `registry/agents.txt` is a local file of local paths.
+- 🔮 **No multi-agent decision protocol.** `decide` is a single agent merging its *own* `thought/<topic>` branch. There is no voting, quorum, negotiation, or consensus across agents.
+- 🔮 **No error handling on the message path.** A tick moves processed messages to `inbox/.processed-*`; there is no dead-letter queue, retry, or failure tracking. Malformed messages are best-effort parsed with `grep`/`cut`.
+- 🔮 **No tests.** There is no test suite in this repository — verification is by running the orchestrator commands manually (as the Quick start does).
+
 ## Core ideas, defined
 
 - **Agent repository**: a normal git repo at `agents/{name}/` that holds one agent's state. It contains an `AGENT.yaml` manifest, an `inbox/`, an `outbox/`, a `memory/`, and whatever thought files the agent creates.
@@ -91,6 +121,11 @@ A full round-robin of pairwise messages is `O(N²)` commits across the fleet, be
 ## Quick start
 
 ```bash
+# The shipped agents/ dir holds empty placeholder folders (and registry/agents.txt
+# has paths from another machine), so 'spawn' would refuse a name that already
+# exists. Clear them first on a fresh clone:
+rm -rf agents/* registry/agents.txt
+
 # Spawn a small fleet
 ./orchestrator.sh spawn "architect" "coordinator"
 ./orchestrator.sh spawn "builder" "worker"
