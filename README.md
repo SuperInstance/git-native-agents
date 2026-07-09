@@ -182,6 +182,19 @@ Git-Native Agents extends the single-agent `git-agent-system` idea to multi-agen
 
 The system pushes as much as possible onto git's own mechanics: persistence is the object database, ordering is commit history, addressing is the filesystem path, and recall is a tag lookup. The boundary is exactly where git's single-writer locking model becomes the bottleneck.
 
+## Relationship to purplepincher/git-native-agents
+
+This repository is the original sketch. A hardened continuation was graduated
+into the [purplepincher](https://github.com/purplepincher) org as
+[purplepincher/git-native-agents](https://github.com/purplepincher/git-native-agents):
+it fixed the `.git/index.lock` concurrency collision described above (using
+`flock` to serialize operations on shared repos) and carries a test suite
+(`tests/run.sh`, `tests/concurrency.sh`) this copy does not have. If you want
+to *use* the git-native coordination model rather than read its first draft,
+start there. This copy stays accurate about itself: everything in
+"What this explicitly does NOT do yet" above remains true of the code in
+*this* repository.
+
 ## References
 
 - Hewitt, C. "Viewing Control Structures as Patterns of Passing Messages," MIT AI Memo 410 (1976).
