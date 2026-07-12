@@ -223,7 +223,10 @@ fleet_status() {
         local commits=$(git log --oneline | wc -l)
         local inbox=$(ls inbox/*.md 2>/dev/null | wc -l)
         local memories=$(ls memory/*.txt 2>/dev/null | wc -l)
-        local branches=$(git branch | grep -c 'thought/' || echo "0")
+        # grep -c prints the count (0 when none match) but exits 1 on zero
+        # matches; '|| true' swallows that exit so pipefail doesn't abort,
+        # without emitting a second "0" line (which `|| echo 0` would do).
+        local branches=$(git branch | grep -c 'thought/' || true)
         
         echo -e "  ${GREEN}$name${NC} ($role)"
         echo "    tick=$tick status=$status commits=$commits"

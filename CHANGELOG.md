@@ -11,4 +11,9 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/) semantic
   paths. Each test runs against an isolated sandbox copy of the repo.
 
 ### Fixed
-- _(bugs fixed in this round are documented under each commit below; see git log.)_
+- **fleet: stray "0" line in status output.** `fleet_status` counted thought
+  branches with `git branch | grep -c 'thought/' || echo "0"`. When an agent
+  had no thought branches, `grep -c` prints `0` *and* exits 1, so the `|| echo
+  "0"` ran too, emitting a second bare `0` line after every agent. Replaced with
+  `|| true`, which keeps `grep -c`'s own count output without the duplicate.
+- _(further bugs fixed in subsequent commits; see git log.)_

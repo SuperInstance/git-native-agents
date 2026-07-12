@@ -227,6 +227,23 @@ test_fleet_lists_registered_agents() {
     teardown
 }
 
+test_fleet_thought_count_no_stray_zero() {
+    # Regression: `grep -c 'thought/' || echo 0` used to print "0\n0",
+    # producing a stray "0" line when an agent had no thought branches.
+    setup
+    ora spawn alice worker >/dev/null 2>&1
+    local out; out=$(ora fleet 2>/dev/null)
+    assert_contains "$out" "thoughts=0" "thought count line"
+    # The bug produced a bare "0" on its own line; count those (must be 0).
+    local stray; stray=$(printf '%s\n' "$out" | grep -cx '0' || true)
+    assert_eq 0 "$stray" "no bare-zero lines"
+    # Now create a thought branch and confirm count becomes 1 cleanly
+    ora think alice idea >/dev/null 2>&1
+    out=$(ora fleet 2>/dev/null)
+    assert_contains "$out" "thoughts=1" "thought count after think"
+    teardown
+}
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -245,6 +262,7 @@ main() {
         test_think_creates_thought_branch
         test_decide_merges_thought
         test_fleet_lists_registered_agents
+        test_fleet_thought_count_no_stray_zero
     )
     echo "Running ${#tests[@]} tests..."
     for t in "${tests[@]}"; do
