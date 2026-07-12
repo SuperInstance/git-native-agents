@@ -209,10 +209,27 @@ decide() {
     local topic="$2"
     local workspace="$BASE_DIR/agents/$name"
     
+    require_agent "$name" || return 1
     cd "$workspace"
+    
+    # Refuse cleanly if the thought branch doesn't exist.
+    if ! git rev-parse --verify --quiet "thought/${topic}" >/dev/null; then
+        fail "Agent '$name' has no thought branch: $topic"
+        return 1
+    fi
+    
+    # Return to the agent's default branch (main or master).
     git checkout main -q 2>/dev/null || git checkout master -q
-    git merge "thought/${topic}" -m "decide: merged $topic" -q 2>/dev/null || \
-    git merge "thought/${topic}" -m "decide: merged $topic" --no-edit 2>/dev/null
+    
+    # Merge the thought branch with --no-ff so a real merge commit is always
+    # produced, even when a fast-forward is possible. The merge commit (and its
+    # "decide: merged <topic>" message) IS the auditable decision record; a
+    # fast-forward would silently drop both.
+    if ! git merge --no-ff "thought/${topic}" -m "decide: merged $topic" -q 2>/dev/null; then
+        fail "Agent '$name' could not merge thought branch: $topic (conflict?)"
+        git merge --abort 2>/dev/null || true
+        return 1
+    fi
     
     ok "Agent '$name' decided: $topic merged to main"
 }

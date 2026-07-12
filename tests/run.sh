@@ -259,8 +259,42 @@ test_decide_merges_thought() {
     assert_exit 0 -- ora decide alice mytopic
     # After decide the thought branch content must be on the agent's main line.
     assert_file_exists agents/alice/thought-mytopic.md "thought artifact on main"
-    # Note: current implementation fast-forwards, so no merge commit is produced.
-    # The --no-ff merge-commit assertion is added by the decide fix.
+    teardown
+}
+
+test_decide_unknown_agent_fails() {
+    setup
+    capture ora decide ghost topic
+    assert_eq 1 "$RC" "exit code"
+    assert_contains "$CAPTURED" "not found" "clean agent-not-found message"
+    assert_not_contains "$CAPTURED" "No such file or directory" "no raw cd error"
+    teardown
+}
+
+test_decide_missing_thought_fails() {
+    # BUG 4: deciding a topic whose thought branch doesn't exist used to
+    # abort silently under set -e with no useful error.
+    setup
+    ora spawn alice worker >/dev/null 2>&1
+    capture ora decide alice no_such_topic
+    assert_eq 1 "$RC" "exit code"
+    assert_contains "$CAPTURED" "no thought branch" "clean missing-branch message"
+    teardown
+}
+
+test_decide_creates_real_merge_commit() {
+    # BUG 5: decide used to fast-forward, dropping both the merge commit and
+    # its "decide: merged <topic>" message. The merge commit IS the auditable
+    # decision record the README documents, so we require --no-ff.
+    setup
+    ora spawn alice worker >/dev/null 2>&1
+    ora think alice mytopic >/dev/null 2>&1
+    ora decide alice mytopic >/dev/null 2>&1
+    # HEAD must be a merge commit (2 parents) with the documented message.
+    local parents; parents=$(cd agents/alice && git cat-file -p HEAD | grep -c '^parent')
+    assert_eq 2 "$parents" "merge commit has two parents"
+    assert_contains "$(cd agents/alice && git log --oneline)" "decide: merged mytopic" \
+        "merge commit message present"
     teardown
 }
 
@@ -312,6 +346,9 @@ main() {
         test_think_creates_thought_branch
         test_think_unknown_agent_fails
         test_decide_merges_thought
+        test_decide_unknown_agent_fails
+        test_decide_missing_thought_fails
+        test_decide_creates_real_merge_commit
         test_fleet_lists_registered_agents
         test_fleet_thought_count_no_stray_zero
     )

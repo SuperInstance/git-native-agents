@@ -25,4 +25,14 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/) semantic
   `cd`'d into the workspace directly. Under `set -e` an unknown agent produced a
   raw `cd: ... No such file or directory` with a line-number leak instead of
   `✗ Agent 'X' not found`. Added a shared `require_agent` guard.
-- _(further bugs fixed in subsequent commits; see git log.)_
+- **decide: silent abort on missing thought branch.** Deciding a topic whose
+  `thought/<topic>` branch didn't exist made both `git merge` attempts fail; under
+  `set -e` the script aborted with no useful message. Now verifies the branch
+  exists first and returns a clean `✗ Agent 'X' has no thought branch: <topic>`.
+- **decide: fast-forward dropped the merge commit.** `decide` merged with a plain
+  `git merge`, which fast-forwards when the main branch is an ancestor of the
+  thought branch (the common single-commit case). A fast-forward silently discards
+  the `-m "decide: merged <topic>"` message and produces *no* merge commit — but
+  the README documents that merge commit as the auditable decision record. Now
+  uses `--no-ff` so a real two-parent merge commit is always created. `decide`
+  also gained the same `require_agent` guard as the other commands.
