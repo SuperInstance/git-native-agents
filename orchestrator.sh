@@ -17,6 +17,17 @@ ok()  { echo -e "${GREEN}✓${NC} $1"; }
 warn(){ echo -e "${YELLOW}!${NC} $1"; }
 fail(){ echo -e "${RED}✗${NC} $1"; }
 
+# Validate that an agent workspace exists; print a clean error and return 1 if not.
+# Resolves the workspace path from BASE_DIR so callers don't repeat themselves.
+require_agent() {
+    local name="$1"
+    local workspace="$BASE_DIR/agents/$name"
+    if [ ! -d "$workspace" ]; then
+        fail "Agent '$name' not found"
+        return 1
+    fi
+}
+
 # Spawn a new agent
 spawn_agent() {
     local name="$1"
@@ -142,6 +153,7 @@ remember() {
     local value="$3"
     local workspace="$BASE_DIR/agents/$name"
     
+    require_agent "$name" || return 1
     cd "$workspace"
     mkdir -p memory
     echo "$value" > "memory/${key}.txt"
@@ -158,11 +170,13 @@ recall() {
     local key="$2"
     local workspace="$BASE_DIR/agents/$name"
     
+    require_agent "$name" || return 1
     cd "$workspace"
     if git show "memory/${key}:memory/${key}.txt" 2>/dev/null; then
-        :
+        return 0
     else
         fail "Agent '$name' can't recall: $key"
+        return 1
     fi
 }
 
@@ -172,6 +186,7 @@ think() {
     local topic="$2"
     local workspace="$BASE_DIR/agents/$name"
     
+    require_agent "$name" || return 1
     cd "$workspace"
     local branch="thought/${topic}"
     git branch "$branch" 2>/dev/null || true

@@ -16,4 +16,13 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/) semantic
   had no thought branches, `grep -c` prints `0` *and* exits 1, so the `|| echo
   "0"` ran too, emitting a second bare `0` line after every agent. Replaced with
   `|| true`, which keeps `grep -c`'s own count output without the duplicate.
+- **recall: returns exit 0 on missing memory.** `recall` printed an error via
+  the `fail` helper (which uses `echo`, exit 0) and never returned non-zero, so
+  callers could not detect a failed lookup. Now returns 1 when the memory tag
+  is absent.
+- **remember/recall/think: raw `cd` error on unknown agent.** Unlike `send` and
+  `tick` (which validated the agent and printed a clean message), these commands
+  `cd`'d into the workspace directly. Under `set -e` an unknown agent produced a
+  raw `cd: ... No such file or directory` with a line-number leak instead of
+  `✗ Agent 'X' not found`. Added a shared `require_agent` guard.
 - _(further bugs fixed in subsequent commits; see git log.)_

@@ -74,6 +74,15 @@ assert_file_exists() {
     fi
 }
 
+# Run a command, capturing combined stdout+stderr into $CAPTURED and exit code
+# into $RC, so tests can assert on the exact error message (not just exit code).
+CAPTURED=""
+RC=0
+capture() {
+    CAPTURED=$("$@" 2>&1)
+    RC=$?
+}
+
 # ---------------------------------------------------------------------------
 # Sandbox: fresh copy of the repo so agent workdirs don't leak across tests
 # ---------------------------------------------------------------------------
@@ -197,11 +206,49 @@ test_recall_retrieves_memory() {
     teardown
 }
 
+test_recall_missing_memory_returns_nonzero() {
+    # BUG 2: recall on a missing key used to return exit 0 (echo-based fail),
+    # so callers could never detect a failed recall.
+    setup
+    ora spawn alice worker >/dev/null 2>&1
+    assert_exit 1 -- ora recall alice no_such_key
+    teardown
+}
+
+test_remember_unknown_agent_fails() {
+    # BUG 3: remember on a nonexistent agent used to emit a raw
+    # 'cd: No such file' instead of a clean 'Agent not found'.
+    setup
+    capture ora remember ghost key value
+    assert_eq 1 "$RC" "exit code"
+    assert_contains "$CAPTURED" "not found" "clean agent-not-found message"
+    assert_not_contains "$CAPTURED" "No such file or directory" "no raw cd error"
+    teardown
+}
+
+test_recall_unknown_agent_fails() {
+    setup
+    capture ora recall ghost key
+    assert_eq 1 "$RC" "exit code"
+    assert_contains "$CAPTURED" "not found" "clean agent-not-found message"
+    assert_not_contains "$CAPTURED" "No such file or directory" "no raw cd error"
+    teardown
+}
+
 test_think_creates_thought_branch() {
     setup
     ora spawn alice worker >/dev/null 2>&1
     ora think alice mytopic >/dev/null 2>&1
     assert_contains "$(cd agents/alice && git branch)" "thought/mytopic" "thought branch"
+    teardown
+}
+
+test_think_unknown_agent_fails() {
+    setup
+    capture ora think ghost topic
+    assert_eq 1 "$RC" "exit code"
+    assert_contains "$CAPTURED" "not found" "clean agent-not-found message"
+    assert_not_contains "$CAPTURED" "No such file or directory" "no raw cd error"
     teardown
 }
 
@@ -259,7 +306,11 @@ main() {
         test_tick_unknown_agent_fails
         test_remember_creates_tagged_memory
         test_recall_retrieves_memory
+        test_recall_missing_memory_returns_nonzero
+        test_remember_unknown_agent_fails
+        test_recall_unknown_agent_fails
         test_think_creates_thought_branch
+        test_think_unknown_agent_fails
         test_decide_merges_thought
         test_fleet_lists_registered_agents
         test_fleet_thought_count_no_stray_zero
