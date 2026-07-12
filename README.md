@@ -20,11 +20,12 @@ The result is a fleet that is auditable by default: every message, every memory,
 
 ## Status & capabilities
 
-This repository contains one real, working artifact: `orchestrator.sh`, a ~265-line bash script. Every command below was traced through the source and run end-to-end before this section was written.
+This repository contains one real, working artifact: `orchestrator.sh`, a ~300-line bash script, plus a self-contained test suite at `tests/run.sh`. Every command below was traced through the source and run end-to-end before this section was written.
 
 - ✅ **`spawn`, `send`, `tick`, `remember`, `recall`, `think`, `decide`, `broadcast`, `fleet`** — all implemented and functional. Each maps to a git operation (commit / branch / tag / merge) and leaves a commit trail.
 - ✅ **Auditable by default** — every message, memory, and decision is a git commit you can inspect with `git log`, `git show`, or `git tag`.
 - ✅ **Offline / local** — no server, broker, or database. Agents are plain directories with embedded git repos.
+- ✅ **Test suite** — `tests/run.sh` exercises every command and its error paths (unknown agents, missing memories, missing thought branches, merge-commit verification) in isolated sandboxes. Run it with `./tests/run.sh`.
 - ⚠️ **Running `fleet` on a fresh clone shows nothing** — the shipped `registry/agents.txt` contains absolute paths from another machine (`/home/phoenix/...`), and the committed `agents/*` directories are empty placeholders. To see the system work you must re-spawn agents (see Quick start), which rewrites the registry with paths valid on *your* machine.
 - ⚠️ **Requires `git` on `PATH`** and a writable local filesystem. No other runtime dependency.
 
@@ -45,8 +46,8 @@ That string is built literally in `orchestrator.sh` (`tick_agent`). So this repo
 - 🔮 **No concurrency control.** No file locking, no atomic queue, no broker around git. Concurrent `send`s to the same agent repo collide on git's `index.lock` and some commits fail. Serial or low-concurrency access only.
 - 🔮 **No networking or distribution.** Everything is local filesystem paths. There is no `push`/`pull` coordination between machines and no remote registry; `registry/agents.txt` is a local file of local paths.
 - 🔮 **No multi-agent decision protocol.** `decide` is a single agent merging its *own* `thought/<topic>` branch. There is no voting, quorum, negotiation, or consensus across agents.
-- 🔮 **No error handling on the message path.** A tick moves processed messages to `inbox/.processed-*`; there is no dead-letter queue, retry, or failure tracking. Malformed messages are best-effort parsed with `grep`/`cut`.
-- 🔮 **No tests.** There is no test suite in this repository — verification is by running the orchestrator commands manually (as the Quick start does).
+- 🔮 **No error handling on the message path.** A tick moves processed messages to `inbox/.processed-*`; there is no dead-letter queue, retry, or failure tracking. Malformed messages are best-effort parsed with `grep`/`cut`. *(Command-level error handling — unknown agents, missing memories, missing thought branches — is now covered and tested; the gap is specifically around in-flight message processing and retries.)*
+- ✅ **Tested command surface.** `tests/run.sh` covers the happy and error paths of every command. What is *not* covered by tests is concurrency (no concurrent-writer test) and the tick message-processing internals beyond the basic round-trip.
 
 ## Core ideas, defined
 
@@ -97,7 +98,7 @@ The sender then commits that file in the *recipient's* repository. The commit me
 
 `think {agent} {topic}` creates and checks out `thought/<topic>`, then writes a `thought-{topic}.md` starter file and commits it. The agent can then work on that branch — editing the thought file and committing changes — exactly as a human would on a draft branch.
 
-`decide {agent} {topic}` checks out the agent's default branch (`main` or `master`) and merges `thought/<topic>` with the message `decide: merged <topic>`. The merge commit is the agent's decision to adopt the exploration. The thought branch itself is left in place; it can be deleted once you no longer need the draft history.
+`decide {agent} {topic}` checks out the agent's default branch (`main` or `master`) and merges `thought/<topic>` with `--no-ff` so a real two-parent merge commit is always created, even when a fast-forward would be possible. Its message is `decide: merged <topic>`. That merge commit is the agent's decision to adopt the exploration. The thought branch itself is left in place; it can be deleted once you no longer need the draft history.
 
 ### Broadcast and fleet status
 
@@ -188,12 +189,10 @@ This repository is the original sketch. A hardened continuation was graduated
 into the [purplepincher](https://github.com/purplepincher) org as
 [purplepincher/git-native-agents](https://github.com/purplepincher/git-native-agents):
 it fixed the `.git/index.lock` concurrency collision described above (using
-`flock` to serialize operations on shared repos) and carries a test suite
-(`tests/run.sh`, `tests/concurrency.sh`) this copy does not have. If you want
-to *use* the git-native coordination model rather than read its first draft,
-start there. This copy stays accurate about itself: everything in
-"What this explicitly does NOT do yet" above remains true of the code in
-*this* repository.
+`flock` to serialize operations on shared repos) and carries a concurrency
+test (`tests/concurrency.sh`) this copy does not have. This copy now carries
+its own command-surface test suite (`tests/run.sh`); the remaining difference
+is the `flock`-based concurrency safety and a dedicated concurrent-writer test.
 
 ## References
 
