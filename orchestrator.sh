@@ -17,6 +17,17 @@ ok()  { echo -e "${GREEN}✓${NC} $1"; }
 warn(){ echo -e "${YELLOW}!${NC} $1"; }
 fail(){ echo -e "${RED}✗${NC} $1"; }
 
+# Validate that an agent workspace exists; print a clean error and return 1 if not.
+# Resolves the workspace path from BASE_DIR so callers don't repeat themselves.
+require_agent() {
+    local name="$1"
+    local workspace="$BASE_DIR/agents/$name"
+    if [ ! -d "$workspace" ]; then
+        fail "Agent '$name' not found"
+        return 1
+    fi
+}
+
 # Spawn a new agent
 spawn_agent() {
     local name="$1"
@@ -142,6 +153,7 @@ remember() {
     local value="$3"
     local workspace="$BASE_DIR/agents/$name"
     
+    require_agent "$name" || return 1
     cd "$workspace"
     mkdir -p memory
     echo "$value" > "memory/${key}.txt"
@@ -158,11 +170,13 @@ recall() {
     local key="$2"
     local workspace="$BASE_DIR/agents/$name"
     
+    require_agent "$name" || return 1
     cd "$workspace"
     if git show "memory/${key}:memory/${key}.txt" 2>/dev/null; then
-        :
+        return 0
     else
         fail "Agent '$name' can't recall: $key"
+        return 1
     fi
 }
 
@@ -172,6 +186,7 @@ think() {
     local topic="$2"
     local workspace="$BASE_DIR/agents/$name"
     
+    require_agent "$name" || return 1
     cd "$workspace"
     local branch="thought/${topic}"
     git branch "$branch" 2>/dev/null || true
@@ -194,10 +209,27 @@ decide() {
     local topic="$2"
     local workspace="$BASE_DIR/agents/$name"
     
+    require_agent "$name" || return 1
     cd "$workspace"
+    
+    # Refuse cleanly if the thought branch doesn't exist.
+    if ! git rev-parse --verify --quiet "thought/${topic}" >/dev/null; then
+        fail "Agent '$name' has no thought branch: $topic"
+        return 1
+    fi
+    
+    # Return to the agent's default branch (main or master).
     git checkout main -q 2>/dev/null || git checkout master -q
-    git merge "thought/${topic}" -m "decide: merged $topic" -q 2>/dev/null || \
-    git merge "thought/${topic}" -m "decide: merged $topic" --no-edit 2>/dev/null
+    
+    # Merge the thought branch with --no-ff so a real merge commit is always
+    # produced, even when a fast-forward is possible. The merge commit (and its
+    # "decide: merged <topic>" message) IS the auditable decision record; a
+    # fast-forward would silently drop both.
+    if ! git merge --no-ff "thought/${topic}" -m "decide: merged $topic" -q 2>/dev/null; then
+        fail "Agent '$name' could not merge thought branch: $topic (conflict?)"
+        git merge --abort 2>/dev/null || true
+        return 1
+    fi
     
     ok "Agent '$name' decided: $topic merged to main"
 }
@@ -223,7 +255,10 @@ fleet_status() {
         local commits=$(git log --oneline | wc -l)
         local inbox=$(ls inbox/*.md 2>/dev/null | wc -l)
         local memories=$(ls memory/*.txt 2>/dev/null | wc -l)
-        local branches=$(git branch | grep -c 'thought/' || echo "0")
+        # grep -c prints the count (0 when none match) but exits 1 on zero
+        # matches; '|| true' swallows that exit so pipefail doesn't abort,
+        # without emitting a second "0" line (which `|| echo 0` would do).
+        local branches=$(git branch | grep -c 'thought/' || true)
         
         echo -e "  ${GREEN}$name${NC} ($role)"
         echo "    tick=$tick status=$status commits=$commits"
